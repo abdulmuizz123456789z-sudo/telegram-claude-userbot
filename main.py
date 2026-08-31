@@ -1,17 +1,36 @@
 import os
 import asyncio
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from google import genai
 
-api_id = 35518790
-api_hash = "54d4594451c44d3cfa8252e755dc1c07"
+# Загружаем данные из переменных окружения Railway
+api_id = int(os.environ.get("TELEGRAM_API_ID", 0))
+api_hash = os.environ.get("TELEGRAM_API_HASH", "")
 session_string = os.environ.get("SESSION_STRING", "")
+gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
 
+# Инициализируем Gemini и Telegram
+ai_client = genai.Client(api_key=gemini_api_key)
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
-async def main():
-    async with client:
-        print("Юзербот запущен!")
-        await client.run_until_disconnected()
+@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+async def handle_incoming_message(event):
+    user_message = event.raw_text
+    try:
+        # Запрос к бесплатной модели Gemini Flash
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=user_message,
+        )
+        await event.respond(response.text)
+    except Exception as e:
+        print(f"Ошибка: {e}")
 
-asyncio.run(main())
+async def main():
+    print("Юзербот запущен!")
+    await client.start()
+    await client.run_until_disconnected()
+
+with client:
+    client.loop.run_until_complete(main())
