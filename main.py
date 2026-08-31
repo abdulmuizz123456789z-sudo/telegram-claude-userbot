@@ -11,7 +11,7 @@ api_hash = os.environ.get("TELEGRAM_API_HASH", "")
 session_string = os.environ.get("SESSION_STRING", "")
 gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
 
-# Ваш новый числовой Telegram ID владельца
+# Ваш числовой Telegram ID владельца
 MY_TELEGRAM_ID = 7393851495
 
 ai_client = genai.Client(api_key=gemini_api_key)
@@ -24,8 +24,8 @@ KFC_SYSTEM_PROMPT = (
     "Ты — вежливый виртуальный ассистент службы поддержки KFC. "
     "Используй загруженные администратором файлы и инструкции "
     "для точных ответов клиентам по вопросам меню, работы ресторанов, заказов и доставки. "
-    "Отвечай вежливо, профессионально и строго на основе предоставленной базы знаний. "
-    "Старайся отвечать относительно кратко, так как ответ будет озвучен голосом."
+    "Отвечай вежливо, профессионально, мягко и дружелюбно, как современный голосовой ассистент. "
+    "Избегай сложных списков и символов, пиши текст так, чтобы он звучал красиво при прочтении голосом."
 )
 
 @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
@@ -64,7 +64,7 @@ async def handle_incoming_message(event):
                 return
             return
 
-        # 2. ЕСЛИ СООБЩЕНИЕ ОТ КЛИЕНТА (Отвечаем голосом)
+        # 2. ЕСЛИ СООБЩЕНИЕ ОТ КЛИЕНТА (Отвечаем улучшенным голосом)
         else:
             contents = list(uploaded_knowledge_files) + [f"Вопрос клиента: {user_message}"]
             
@@ -77,12 +77,13 @@ async def handle_incoming_message(event):
             )
             reply_text = ai_response.text
 
-            # Превращаем текст ответа в голосовое сообщение (.ogg)
+            # Генерируем сбалансированную аудиоречь
             voice_path = "response_voice.ogg"
-            tts = gTTS(text=reply_text, lang='ru', slow=False)
+            # tld='com' и сбалансированная скорость дают более мягкое и приятное звучание
+            tts = gTTS(text=reply_text, lang='ru', tld='com', slow=False)
             tts.save(voice_path)
 
-            # Отправляем клиенту голосовое сообщение
+            # Отправляем клиенту как голосовое сообщение с кнопкой воспроизведения в Telegram
             await client.send_file(
                 event.chat_id,
                 voice_path,
@@ -98,7 +99,7 @@ async def handle_incoming_message(event):
         await event.respond("Извините, возникла техническая ошибка при обработке.")
 
 async def main():
-    print("Юзербот-ассистент KFC (с поддержкой голосовых) запущен!")
+    print("Юзербот-ассистент KFC с улучшенным голосом запущен!")
     await client.start()
     await client.run_until_disconnected()
 
