@@ -1,0 +1,2 @@
+Telethon==1.38.1
+anthropic==0.42.0
