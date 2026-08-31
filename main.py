@@ -20,7 +20,7 @@ async def handle_incoming_message(event):
     try:
         # Запрос к бесплатной модели Gemini Flash
         response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=user_message,
         )
         await event.respond(response.text)
