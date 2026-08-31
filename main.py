@@ -11,8 +11,8 @@ api_hash = os.environ.get("TELEGRAM_API_HASH", "")
 session_string = os.environ.get("SESSION_STRING", "")
 gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
 
-# Ваш числовой Telegram ID владельца
-MY_TELEGRAM_ID = 7393851495  # <-- Убедитесь, что здесь ваш реальный ID
+# Ваш новый числовой Telegram ID владельца
+MY_TELEGRAM_ID = 7393851495
 
 ai_client = genai.Client(api_key=gemini_api_key)
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
@@ -37,7 +37,6 @@ async def handle_incoming_message(event):
     try:
         # 1. ЕСЛИ СООБЩЕНИЕ ОТ ВАС (Администратора)
         if sender_id == MY_TELEGRAM_ID:
-            # Обработка медиа (картинки, PDF, а также ваши ГОЛОСОВЫЕ сообщения)
             if event.media:
                 path = await event.download_media()
                 
@@ -60,17 +59,15 @@ async def handle_incoming_message(event):
             
             # Текстовая команда от вас
             if user_message:
-                uploaded_knowledge_files.append(fИнструкция от админа: {user_message}")
+                uploaded_knowledge_files.append(f"Инструкция от админа: {user_message}")
                 await event.respond(f"✅ Текстовая инструкция сохранена в базу знаний. Всего элементов: {len(uploaded_knowledge_files)}")
                 return
             return
 
         # 2. ЕСЛИ СООБЩЕНИЕ ОТ КЛИЕНТА (Отвечаем голосом)
         else:
-            # Собираем всю базу знаний + вопрос клиента
             contents = list(uploaded_knowledge_files) + [f"Вопрос клиента: {user_message}"]
             
-            # Получаем текстовый ответ от Gemini
             ai_response = ai_client.models.generate_content(
                 model='gemini-3.6-flash',
                 contents=contents,
@@ -89,11 +86,10 @@ async def handle_incoming_message(event):
             await client.send_file(
                 event.chat_id,
                 voice_path,
-                voice_note=True, # Отправляет как круглое/голосовое в Telegram
+                voice_note=True,
                 caption=None
             )
             
-            # Удаляем временный файл с диска
             if os.path.exists(voice_path):
                 os.remove(voice_path)
 
