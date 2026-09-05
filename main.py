@@ -17,6 +17,16 @@ client_ai = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
+# Список моделей для автоматического перебора по порядку
+MODELS_TO_TRY = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it"
+]
+
 kfc_knowledge = ""
 stations_dir = "stations"
 if os.path.exists(stations_dir):
@@ -49,23 +59,34 @@ async def handle_incoming_message(event):
 
 Дай четкий, профессиональный и точный ответ на основе стандартов KFC."""
 
-    try:
-        response = client_ai.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            stream=False
-        )
-        reply_text = response.choices[0].message.content
-        if reply_text:
-            await event.reply(reply_text)
-            print("📤 Ответ успешно отправлен!")
-        else:
-            await event.reply("Не удалось получить ответ от модели.")
-    except Exception as e:
-        print(f"❌ Ошибка при обращении к Groq: {e}")
+    response_text = None
+    last_error = None
+
+    # Перебор моделей до первого успешного ответа
+    for model_name in MODELS_TO_TRY:
+        try:
+            print(f"🔄 Пробуем модель: {model_name}...")
+            response = client_ai.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                stream=False
+            )
+            response_text = response.choices[0].message.content
+            if response_text:
+                print(f"✅ Успешно ответила модель: {model_name}")
+                break
+        except Exception as e:
+            print(f"⚠️ Модель {model_name} недоступна: {e}")
+            last_error = e
+
+    if response_text:
+        await event.reply(response_text)
+        print("📤 Ответ успешно отправлен!")
+    else:
+        print(f"❌ Ни одна модель не сработала. Последняя ошибка: {last_error}")
         await event.reply("Произошла ошибка при обработке запроса к ИИ.")
 
 async def main_async():
