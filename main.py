@@ -49,9 +49,9 @@ async def handle_incoming_message(event):
 
 Дай четкий, профессиональный и точный ответ на основе стандартов KFC."""
 
-   try:
+    try:
         response = client_ai.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="llama-3.3-70b-specdec",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
