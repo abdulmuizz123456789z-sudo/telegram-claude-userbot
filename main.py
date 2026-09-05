@@ -17,15 +17,6 @@ client_ai = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-# Актуальный список моделей Groq
-MODELS_TO_TRY = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "qwen-2.5-72b",
-    "deepseek-r1-distill-llama-70b",
-    "gemma-2-9b-it"
-]
-
 kfc_knowledge = ""
 stations_dir = "stations"
 if os.path.exists(stations_dir):
@@ -36,6 +27,18 @@ if os.path.exists(stations_dir):
                 kfc_knowledge += f"\n--- {filename} ---\n" + f.read()
 
 client = TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH)
+
+def get_active_groq_models():
+    """Динамически получает список всех активных моделей от Groq API"""
+    try:
+        models_data = client_ai.models.list()
+        # Фильтруем и собираем только ID активных моделей
+        active_models = [m.id for m in models_data.data if getattr(m, 'active', True)]
+        print(f"📋 Доступные модели Groq: {active_models}")
+        return active_models
+    except Exception as e:
+        print(f"⚠️ Не удалось получить список моделей через API: {e}")
+        return []
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_incoming_message(event):
@@ -58,10 +61,22 @@ async def handle_incoming_message(event):
 
 Дай четкий, профессиональный и точный ответ на основе стандартов KFC."""
 
+    # Динамически получаем список доступных моделей
+    available_models = get_active_groq_models()
+
+    if not available_models:
+        await event.reply("Ошибка: Не удалось загрузить список доступных моделей Groq.")
+        return
+
     response_text = None
     last_error = None
 
-    for model_name in MODELS_TO_TRY:
+    # Перебираем реально существующие модели в вашем аккаунте
+    for model_name in available_models:
+        # Пропускаем модели whisper/audio, если они есть в списке
+        if "whisper" in model_name or "safetensors" in model_name:
+            continue
+            
         try:
             print(f"🔄 Пробуем модель: {model_name}...")
             response = client_ai.chat.completions.create(
@@ -77,7 +92,7 @@ async def handle_incoming_message(event):
                 print(f"✅ Успешно ответила модель: {model_name}")
                 break
         except Exception as e:
-            print(f"⚠️ Модель {model_name} недоступна: {e}")
+            print(f"⚠️ Модель {model_name} не ответила: {e}")
             last_error = e
 
     if response_text:
