@@ -52,8 +52,8 @@ async def handle_incoming_message(event):
 Дай четкий, профессиональный и точный ответ на основе стандартов KFC."""
 
     try:
-        response = client_ai.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+       response = client_ai.chat.completions.create(
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
