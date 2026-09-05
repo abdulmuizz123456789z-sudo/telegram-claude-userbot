@@ -6,16 +6,16 @@ from openai import OpenAI
 
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SESSION_STRING = os.getenv("SESSION_STRING")
 
-if not API_ID or not API_HASH or not DEEPSEEK_API_KEY or not SESSION_STRING:
+if not API_ID or not API_HASH or not GROQ_API_KEY or not SESSION_STRING:
     raise ValueError("Не заданы обязательные переменные окружения на Railway!")
 
-# Инициализация клиента DeepSeek (через OpenAI SDK с базовым URL DeepSeek)
+# Инициализация клиента Groq (полностью совместим с OpenAI SDK)
 client_ai = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com"
+    api_key=GROQ_API_KEY,
+    base_url="https://api.groq.com/openai/v1"
 )
 
 # Загрузка базы знаний из папки stations
@@ -53,7 +53,7 @@ async def handle_incoming_message(event):
 
     try:
         response = client_ai.chat.completions.create(
-            model="deepseek-chat",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -67,11 +67,11 @@ async def handle_incoming_message(event):
         else:
             await event.reply("Не удалось получить ответ от модели.")
     except Exception as e:
-        print(f"❌ Ошибка при обращении к DeepSeek: {e}")
+        print(f"❌ Ошибка при обращении к Groq: {e}")
         await event.reply("Произошла ошибка при обработке запроса к ИИ.")
 
 async def main_async():
-    print("🚀 Telegram Userbot с ИИ DeepSeek успешно запущен!")
+    print("🚀 Telegram Userbot с Groq успешно запущен!")
     await client.connect()
     
     if not await client.is_user_authorized():
@@ -84,3 +84,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
