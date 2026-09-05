@@ -51,7 +51,7 @@ async def handle_incoming_message(event):
 
     try:
         response = client_ai.chat.completions.create(
-            model="groq/openai/gpt-oss-120b",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
