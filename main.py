@@ -1,9 +1,10 @@
 import os
+import asyncio
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 import google.generativeai as genai
 
-# Загрузка переменных окружения (имена должны точно совпасть с Railway)
+# Загрузка переменных окружения
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -39,11 +40,13 @@ client = TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH)
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_incoming_message(event):
+    # Отвечаем только в личных сообщениях
     if not event.is_private:
         return
 
     user_message = event.raw_text
     
+    # Формируем промпт для Gemini с учетом базы знаний
     prompt = f"""
 Ты — корпоративный помощник и эксперт по стандартам ресторанов KFC. 
 Используй следующую базу знаний для ответов на вопросы сотрудников:
@@ -61,12 +64,18 @@ async def handle_incoming_message(event):
     except Exception as e:
         print(f"Ошибка при обращении к Gemini: {e}")
 
-def main():
+async def main_async():
     print("🚀 Telegram Userbot с ИИ Gemini успешно запущен!")
-    client.connect()
-    if not client.is_user_authorized():
+    await client.connect()
+    
+    if not await client.is_user_authorized():
         raise RuntimeError("Ошибка авторизации: SESSION_STRING недействителен или устарел!")
-    client.run_until_disconnected()
+        
+    await client.run_until_disconnected()
+
+def main():
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()
+    
