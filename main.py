@@ -17,14 +17,13 @@ client_ai = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-# Список моделей для автоматического перебора по порядку
+# Актуальный список моделей Groq
 MODELS_TO_TRY = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "llama3-70b-8192",
-    "llama3-8b-8192",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it"
+    "qwen-2.5-72b",
+    "deepseek-r1-distill-llama-70b",
+    "gemma-2-9b-it"
 ]
 
 kfc_knowledge = ""
@@ -62,7 +61,6 @@ async def handle_incoming_message(event):
     response_text = None
     last_error = None
 
-    # Перебор моделей до первого успешного ответа
     for model_name in MODELS_TO_TRY:
         try:
             print(f"🔄 Пробуем модель: {model_name}...")
