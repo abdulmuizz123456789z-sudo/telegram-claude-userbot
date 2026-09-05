@@ -1,92 +1,72 @@
 import os
-import glob
-import logging
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 import google.generativeai as genai
 
-# ---------------------------------------------------------------------------
-# 1. Настройка авторизации Telegram (Userbot) и Gemini
-# ---------------------------------------------------------------------------
-# Эти данные берутся с сайта my.telegram.org
-API_ID = int(os.getenv("TELEGRAM_API_ID", "35518790"))  # Ваш API ID
-API_HASH = os.getenv("TELEGRAM_API_HASH", "54d4594451c44d3cfa8252e755dc1c07")  # Ваш API Hash
+# Загрузка переменных окружения (имена должны точно совпасть с Railway)
+API_ID = os.getenv("TELEGRAM_API_ID")
+API_HASH = os.getenv("TELEGRAM_API_HASH")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SESSION_STRING = os.getenv("SESSION_STRING")
 
-# Бесплатный ключ Gemini из Google AI Studio
-GEMINI_API_KEY = os.getenv("54d4594451c44d3cfa8252e755dc1c07")
+# Проверка наличия обязательных ключей
+if not API_ID or not API_HASH or not GEMINI_API_KEY or not SESSION_STRING:
+    raise ValueError("Не заданы обязательные переменные окружения на Railway!")
 
+# Инициализация Gemini
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+generation_config = {
+    "temperature": 0.3,
+    "max_output_tokens": 800,
+}
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    generation_config=generation_config
+)
 
-# Инициализируем клиент Telethon
-client = TelegramClient('userbot_session', API_ID, API_HASH)
-
-logging.basicConfig(level=logging.INFO)
-
-# ---------------------------------------------------------------------------
-# 2. Функция чтение всех стандартов станций
-# ---------------------------------------------------------------------------
-def get_all_standards() -> str:
-    """Загружает текст всех регламентов из папки stations/."""
-    combined_knowledge = ""
-    files = glob.glob("stations/*.txt")
-    
-    for file_path in files:
-        file_name = os.path.basename(file_path)
-        try:
+# Загрузка базы знаний из папки stations, если она есть
+kfc_knowledge = ""
+stations_dir = "stations"
+if os.path.exists(stations_dir):
+    for filename in os.listdir(stations_dir):
+        if filename.endswith(".txt"):
+            file_path = os.path.join(stations_dir, filename)
             with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                combined_knowledge += f"\n\n=== STANSIYA STANDARTI ({file_name}) ===\n{content}"
-        except Exception as e:
-            logging.error(f"Хатолик: {e}")
-            
-    return combined_knowledge
+                kfc_knowledge += f"\n--- {filename} ---\n" + f.read()
 
-# ---------------------------------------------------------------------------
-# 3. Обработчик входящих личных сообщений
-# ---------------------------------------------------------------------------
-@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
-async def handle_new_message(event):
-    user_text = event.message.text.strip()
-    if not user_text:
+# Инициализация клиента Telethon через StringSession для Railway
+client = TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH)
+
+@client.on(events.NewMessage(incoming=True))
+async def handle_incoming_message(event):
+    if not event.is_private:
         return
 
-    # Читаем стандарты станций из папки
-    knowledge_base = get_all_standards()
+    user_message = event.raw_text
+    
+    prompt = f"""
+Ты — корпоративный помощник и эксперт по стандартам ресторанов KFC. 
+Используй следующую базу знаний для ответов на вопросы сотрудников:
 
-    # Промпт для ИИ
-    system_prompt = f"""
-Ты — автоматический ИИ-помощник сети ресторанов KFC, встроенный в этот аккаунт.
-Твоя задача — давать ИСКЛЮЧИТЕЛЬНО ТОЧНЫЕ и КРАТКИЕ ответы по конкретным деталям, о которых спрашивает сотрудник.
+{kfc_knowledge}
 
-Официальная база знаний (на узбекском языке):
-{knowledge_base}
-
-СТРОГИЕ ПРАВИЛА:
-1. Выдели ТОЛЬКО ту конкретную деталь или шаг, о котором спросил сотрудник. Не отправляй весь документ целиком!
-2. Определи язык вопроса (узбекский, русский, английский и т.д.).
-3. База знаний на узбекском. Если вопрос на русском — АВТОМАТИЧЕСКИ ПЕРЕВЕДИ нужную деталь и ответь на русском.
-4. Отвечай обычным понятным текстом.
-5. Если информации по этой конкретной детали нет в базе, ответь: «К сожалению, у меня нет информации по этой детали в инструкциях / Афсуски, ушбу детал бўйича маълумот йўқ».
-
-Вопрос сотрудника: {user_text}
+Вопрос сотрудника: {user_message}
+Дай четкий, профессиональный и точный ответ на основе стандартов KFC. Если информации нет в базе, отвечай опираясь на общие регламенты сети.
 """
 
     try:
-        # Показываем статус "печатает..." в чате
-        async with client.action(event.chat_id, 'typing'):
-            # Запрос к Gemini
-            response = model.generate_content(system_prompt)
-            answer_text = response.text.strip()
-            
-            # Отвечаем прямо в чат от имени аккаунта
-            await event.reply(answer_text)
-
+        response = model.generate_content(prompt)
+        reply_text = response.text
+        await event.reply(reply_text)
     except Exception as e:
-        logging.error(f"Gemini/Telethon Error: {e}")
+        print(f"Ошибка при обращении к Gemini: {e}")
 
-# ---------------------------------------------------------------------------
-# 4. Запуск аккаунта
-# ---------------------------------------------------------------------------
-print("🚀 Telegram Userbot с ИИ Gemini успешно запущен!")
-client.start()
-client.run_until_disconnected()
+def main():
+    print("🚀 Telegram Userbot с ИИ Gemini успешно запущен!")
+    client.connect()
+    if not client.is_user_authorized():
+        raise RuntimeError("Ошибка авторизации: SESSION_STRING недействителен или устарел!")
+    client.run_until_disconnected()
+
+if __name__ == "__main__":
+    main()
