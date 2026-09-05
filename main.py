@@ -12,13 +12,11 @@ SESSION_STRING = os.getenv("SESSION_STRING")
 if not API_ID or not API_HASH or not GROQ_API_KEY or not SESSION_STRING:
     raise ValueError("Не заданы обязательные переменные окружения на Railway!")
 
-# Инициализация клиента Groq (полностью совместим с OpenAI SDK)
 client_ai = OpenAI(
     api_key=GROQ_API_KEY,
     base_url="https://api.groq.com/openai/v1"
 )
 
-# Загрузка базы знаний из папки stations
 kfc_knowledge = ""
 stations_dir = "stations"
 if os.path.exists(stations_dir):
@@ -52,7 +50,7 @@ async def handle_incoming_message(event):
 Дай четкий, профессиональный и точный ответ на основе стандартов KFC."""
 
     try:
-       response = client_ai.chat.completions.create(
+        response = client_ai.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -84,4 +82,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
