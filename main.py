@@ -47,13 +47,29 @@ MEDIA_MAP = {
     "санитария": STATIONS_DIR / "sanitariya.pdf",
 }
 
-# Актуальный список активных моделей Groq
-GROQ_MODELS = [
+# Резервный список актуальных моделей с полными путями
+FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.6-27b",
     "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama-3.2-11b-vision-preview",
-    "mixtral-8x7b-32768"
+    "llama-3.1-8b-instant"
 ]
+
+def get_active_groq_models():
+    """Получает актуальный список доступных моделей напрямую из Groq API"""
+    try:
+        models_data = groq_client.models.list()
+        active_models = [m.id for m in models_data.data if not getattr(m, 'active', True) == False]
+        # Фильтруем whisper/audio/guard модели, оставляем только текстовые генеративные
+        chat_models = [m for m in active_models if not any(x in m for x in ['whisper', 'guard', 'prompt-guard'])]
+        if chat_models:
+            print(f"📋 Доступные модели Groq из API: {chat_models}")
+            return chat_models
+    except Exception as e:
+        print(f"⚠️ Не удалось загрузить список моделей через API: {e}")
+    
+    return FALLBACK_MODELS
 
 # ------------------------------------------------------------------------------
 # 3. ОБРАБОТКА СООБЩЕНИЙ TELEGRAM
@@ -75,8 +91,11 @@ async def handle_message(event):
     bot_answer = None
     last_error = None
 
+    # Динамически получаем список работающих моделей
+    available_models = get_active_groq_models()
+
     # Поочередная попытка вызова моделей Groq
-    for model_name in GROQ_MODELS:
+    for model_name in available_models:
         try:
             response = groq_client.chat.completions.create(
                 model=model_name,
