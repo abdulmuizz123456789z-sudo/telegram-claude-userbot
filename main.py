@@ -28,8 +28,11 @@ client = TelegramClient(StringSession(SESSION_STRING.strip()), API_ID, API_HASH)
 groq_client = Groq(api_key=GROQ_API_KEY.strip())
 
 # ------------------------------------------------------------------------------
-# 2. СИСТЕМНЫЙ ПРОМПТ И КАРТА МЕДИАФАЙЛОВ СТАНЦИЙ
+# 2. ПУТИ, СИСТЕМНЫЙ ПРОМПТ И КАРТА МЕДИАФАЙЛОВ
 # ------------------------------------------------------------------------------
+BASE_DIR = Path(__file__).parent
+STATIONS_DIR = BASE_DIR / "stations"
+
 SYSTEM_PROMPT = """
 Ты — эксперт по стандартам KFC. У тебя есть доступ к PDF-инструкциям и регламентам станций:
 1. Панировка (panirovka.pdf)
@@ -56,24 +59,19 @@ MEDIA_MAP = {
     "чистка": STATIONS_DIR / "sanitariya.pdf",
 }
 
-# Резервный список актуальных моделей с полными путями
+# Резервный список моделей на случай недоступности API списка
 FALLBACK_MODELS = [
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
-    "qwen/qwen3.6-27b",
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant"
 ]
 
 def get_active_groq_models():
-    """Получает актуальный список доступных моделей напрямую из Groq API"""
+    """Запрашивает актуальный список доступных моделей напрямую из Groq API"""
     try:
         models_data = groq_client.models.list()
-        active_models = [m.id for m in models_data.data if not getattr(m, 'active', True) == False]
-        # Фильтруем whisper/audio/guard модели, оставляем только текстовые генеративные
+        active_models = [m.id for m in models_data.data if getattr(m, 'active', True)]
         chat_models = [m for m in active_models if not any(x in m for x in ['whisper', 'guard', 'prompt-guard'])]
         if chat_models:
-            print(f"📋 Доступные модели Groq из API: {chat_models}")
             return chat_models
     except Exception as e:
         print(f"⚠️ Не удалось загрузить список моделей через API: {e}")
@@ -93,17 +91,16 @@ async def handle_message(event):
     # Поиск соответствующего медиафайла
     matched_file = None
     for key, file_path in MEDIA_MAP.items():
-        if key in user_text or any(word in user_text for word in key.split("_")):
+        if key in user_text:
             matched_file = file_path
             break
 
     bot_answer = None
     last_error = None
 
-    # Динамически получаем список работающих моделей
+    # Динамически получаем доступные модели
     available_models = get_active_groq_models()
 
-    # Поочередная попытка вызова моделей Groq
     for model_name in available_models:
         try:
             response = groq_client.chat.completions.create(
