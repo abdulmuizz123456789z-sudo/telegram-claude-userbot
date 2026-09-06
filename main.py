@@ -47,11 +47,12 @@ MEDIA_MAP = {
     "санитария": STATIONS_DIR / "sanitariya.pdf",
 }
 
+# Актуальный список активных моделей Groq
 GROQ_MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it"
+    "llama-3.2-11b-vision-preview",
+    "mixtral-8x7b-32768"
 ]
 
 # ------------------------------------------------------------------------------
@@ -100,7 +101,6 @@ async def handle_message(event):
             if matched_file and matched_file.exists():
                 await event.reply(file=matched_file)
         else:
-            # Выводим точный текст ошибки от Groq прямо в чат
             await event.reply(f"⚠️ Ошибка Groq API:\n`{last_error}`")
 
     except Exception as e:
