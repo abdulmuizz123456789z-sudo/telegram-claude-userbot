@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from groq import Groq
 
 # ------------------------------------------------------------------------------
@@ -16,7 +17,6 @@ if not all([API_ID, API_HASH, SESSION_STRING, GROQ_API_KEY]):
     print("❌ Ошибка: Не все переменные окружения (API_ID, API_HASH, SESSION_STRING, GROQ_API_KEY) заданы!")
     sys.exit(1)
 
-# Преобразование API_ID в int
 try:
     API_ID = int(API_ID)
 except ValueError:
@@ -24,10 +24,8 @@ except ValueError:
     sys.exit(1)
 
 # Инициализация клиентов
-from telethon.sessions import StringSession
-
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-groq_client = Groq(api_key=GROQ_API_KEY)
+client = TelegramClient(StringSession(SESSION_STRING.strip()), API_ID, API_HASH)
+groq_client = Groq(api_key=GROQ_API_KEY.strip())
 
 # ------------------------------------------------------------------------------
 # 2. СИСТЕМНЫЙ ПРОМПТ И КАРТА МЕДИАФАЙЛОВ СТАНЦИЙ
@@ -38,11 +36,9 @@ SYSTEM_PROMPT = """
 Отвечай структурированно, четко и по делу.
 """
 
-# Путь к директории с медиафайлами станций
 BASE_DIR = Path(__file__).parent
 STATIONS_DIR = BASE_DIR / "stations"
 
-# Карта ключевых слов к файлам станций
 MEDIA_MAP = {
     "панировка": STATIONS_DIR / "panirovka.pdf",
     "жарка": STATIONS_DIR / "frikasse.pdf",
@@ -51,7 +47,6 @@ MEDIA_MAP = {
     "санитария": STATIONS_DIR / "sanitariya.pdf",
 }
 
-# Приоритетный список моделей Groq для резервного переключения (fallback)
 GROQ_MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
@@ -77,6 +72,7 @@ async def handle_message(event):
             break
 
     bot_answer = None
+    last_error = None
 
     # Поочередная попытка вызова моделей Groq
     for model_name in GROQ_MODELS:
@@ -94,19 +90,18 @@ async def handle_message(event):
             print(f"✅ Успешный ответ от модели: {model_name}")
             break
         except Exception as e:
+            last_error = str(e)
             print(f"⚠️ Ошибка при вызове модели {model_name}: {e}")
             continue
 
     try:
         if bot_answer:
-            # Отправка текстового ответа
             await event.reply(bot_answer)
-
-            # Отправка файла станции, если найден релевантный
             if matched_file and matched_file.exists():
                 await event.reply(file=matched_file)
         else:
-            await event.reply("⚠️ Ни одна из моделей LLM недоступна в данный момент. Попробуйте позже.")
+            # Выводим точный текст ошибки от Groq прямо в чат
+            await event.reply(f"⚠️ Ошибка Groq API:\n`{last_error}`")
 
     except Exception as e:
         print(f"❌ Ошибка отправки сообщения в Telegram: {e}")
@@ -122,3 +117,4 @@ async def main_async():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main_async())
+    
