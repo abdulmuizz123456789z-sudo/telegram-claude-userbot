@@ -1,173 +1,127 @@
 import os
-import asyncio
+import re
+from pathlib import Path
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-from openai import OpenAI
-from pypdf import PdfReader
+from groq import Groq
 
-# 1. Проверка и получение переменных окружения из Railway
-API_ID = os.getenv("TELEGRAM_API_ID")
-API_HASH = os.getenv("TELEGRAM_API_HASH")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# ------------------------------------------------------------------------------
+# 1. КОНФИГУРАЦИЯ И ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+# ------------------------------------------------------------------------------
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not API_ID or not API_HASH or not GROQ_API_KEY or not SESSION_STRING:
-    raise ValueError("⚠️ Не заданы обязательные переменные окружения на Railway (TELEGRAM_API_ID, TELEGRAM_API_HASH, GROQ_API_KEY, SESSION_STRING)!")
+if not all([API_ID, API_HASH, SESSION_STRING, GROQ_API_KEY]):
+    raise ValueError("❌ Ошибка: Не все переменные окружения (API_ID, API_HASH, SESSION_STRING, GROQ_API_KEY) заданы!")
 
-# 2. Инициализация клиента Groq API (через OpenAI SDK)
-client_ai = OpenAI(
-    api_key=GROQ_API_KEY,
-    base_url="https://api.groq.com/openai/v1"
-)
+# Очистка SESSION_STRING от возможных кавычек и пробелов
+CLEAN_SESSION = SESSION_STRING.strip().strip('"').strip("'")
 
-STATIONS_DIR = "stations"
+# Инициализация клиентов
+groq_client = Groq(api_key=GROQ_API_KEY)
+client = TelegramClient(StringSession(CLEAN_SESSION), int(API_ID), API_HASH)
 
-def load_full_knowledge():
-    """
-    Рекурсивно сканирует директорию stations (все 5 станций: kitchen, panera, service, lobby, wash).
-    Собирает текстовые данные из .txt и .pdf для ИИ, а также индексирует PDF и медиафайлы для отправки.
-    """
-    knowledge_text = ""
-    media_files = []
+BASE_DIR = Path(__file__).parent / "stations"
 
-    if not os.path.exists(STATIONS_DIR):
-        return knowledge_text, media_files
+# ------------------------------------------------------------------------------
+# 2. RAG & МЕДИА БАЗА (5 СТАНЦИЙ KFC)
+# ------------------------------------------------------------------------------
+def get_station_context_and_files():
+    """Сканирует директорию stations/ и собирает текст и медиафайлы."""
+    context_text = ""
+    media_files = {}
 
-    for root, dirs, files in os.walk(STATIONS_DIR):
-        for filename in files:
-            file_path = os.path.join(root, filename)
+    if not BASE_DIR.exists():
+        return context_text, media_files
+
+    for station_folder in sorted(BASE_DIR.iterdir()):
+        if station_folder.is_dir():
+            station_name = station_folder.name
             
-            # 1. Обработка текстовых файлов (.txt)
-            if filename.endswith(".txt"):
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        knowledge_text += f"\n--- Инструкция ({filename}): {file_path} ---\n" + f.read()
-                except Exception as e:
-                    print(f"⚠️ Ошибка чтения TXT {filename}: {e}")
+            # Чтение текстовых стандартов
+            text_dir = station_folder / "text"
+            if text_dir.exists():
+                for txt_file in text_dir.glob("*.txt"):
+                    try:
+                        content = txt_file.read_text(encoding="utf-8")
+                        context_text += f"\n--- СТАНЦИЯ: {station_name} ({txt_file.name}) ---\n{content}\n"
+                    except Exception:
+                        pass
 
-            # 2. Извлечение текста из PDF и сохранение ссылки на файл для отправки
-            elif filename.endswith(".pdf"):
-                media_files.append({"name": filename, "path": file_path, "type": "pdf"})
-                try:
-                    reader = PdfReader(file_path)
-                    pdf_text = ""
-                    for page in reader.pages:
-                        extracted = page.extract_text()
-                        if extracted:
-                            pdf_text += extracted + "\n"
-                    knowledge_text += f"\n--- PDF Стандарт ({filename}): {file_path} ---\n" + pdf_text
-                except Exception as e:
-                    print(f"⚠️ Ошибка чтения PDF {filename}: {e}")
+            # Индексация PDF и Video
+            for media_type in ["pdf", "video"]:
+                media_dir = station_folder / media_type
+                if media_dir.exists():
+                    for file in media_dir.iterdir():
+                        if file.is_file() and not file.name.startswith("."):
+                            key = file.stem.lower()
+                            media_files[key] = file
 
-            # 3. Сохранение ссылок на видеофайлы (.mp4, .mov)
-            elif filename.endswith(".mp4") or filename.endswith(".mov"):
-                media_files.append({"name": filename, "path": file_path, "type": "video"})
+    return context_text, media_files
 
-    return knowledge_text, media_files
+KNOWLEDGE_BASE, MEDIA_MAP = get_station_context_and_files()
 
-# 3. Инициализация клиента Telethon из StringSession
-client = TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH)
+SYSTEM_PROMPT = f"""
+Ты — эксперт и инструктор по стандартам KFC. Твоя задача — давать точные, чёткие и профессиональные ответы сотрудникам на основе регламентов.
 
-def get_active_groq_models():
-    """Динамически запрашивает у Groq список активных доступных моделей"""
-    try:
-        models_data = client_ai.models.list()
-        return [m.id for m in models_data.data if getattr(m, 'active', True)]
-    except Exception as e:
-        print(f"⚠️ Не удалось получить список моделей через API Groq: {e}")
-        return []
+База знаний станций:
+{KNOWLEDGE_BASE}
 
+Инструкции:
+1. Отвечай строго по существу стандарта.
+2. Если пользователь просит регламент, схему или видеоинструкцию, отвечай кратко и упоминай название файла.
+"""
+
+# ------------------------------------------------------------------------------
+# 3. ОБРАБОТКА СООБЩЕНИЙ TELEGRAM
+# ------------------------------------------------------------------------------
 @client.on(events.NewMessage(incoming=True))
-async def handle_incoming_message(event):
-    # Работаем только в личных сообщениях
-    if not event.is_private:
+async def handle_message(event):
+    if not event.text or event.is_group:
         return
 
-    user_message = event.raw_text
-    print(f"📥 Получено сообщение от пользователя: {user_message}")
+    user_text = event.text.strip().lower()
 
-    knowledge_text, media_files = load_full_knowledge()
+    # Поиск соответствующего медиафайла (PDF/Video)
+    matched_file = None
+    for key, file_path in MEDIA_MAP.items():
+        if key in user_text or any(word in user_text for word in key.split("_")):
+            matched_file = file_path
+            break
 
-    if not knowledge_text.strip():
-        await event.reply("База знаний пока пуста. Загрузите стандарты в папку stations.")
-        return
+    try:
+        # Генерация ответа через Groq API
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": event.text}
+            ],
+            temperature=0.3,
+            max_tokens=1000
+        )
+        bot_answer = response.choices[0].message.content
 
-    system_prompt = f"""Ты — эксперт и корпоративный помощник ресторана KFC.
-Твоя задача — дать максимально точный, исчерпывающий и подробный ответ по стандартам KFC на основе предоставленной базы знаний.
+        # Отправка текстового ответа
+        await event.reply(bot_answer)
 
-База знаний (включает 5 станций: Kitchen, Panera, Service, Lobby, Wash):
-{knowledge_text}
+        # Отправка файла, если найден релевантный
+        if matched_file and matched_file.exists():
+            await event.reply(file=matched_file)
 
-Отвечай вежливо, структурированно и профессионально."""
+    except Exception as e:
+        await event.reply("⚠️ Произошла ошибка при обработке запроса. Попробуйте позже.")
 
-    available_models = get_active_groq_models()
-    if not available_models:
-        await event.reply("Ошибка: Не удалось найти активные модели Groq.")
-        return
-
-    response_text = None
-    last_error = None
-
-    # Перебор доступных моделей
-    for model_name in available_models:
-        if "whisper" in model_name or "safetensors" in model_name:
-            continue
-            
-        try:
-            print(f"🔄 Обращение к модели: {model_name}...")
-            response = client_ai.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                stream=False
-            )
-            response_text = response.choices[0].message.content
-            if response_text:
-                print(f"✅ Успешный ответ от модели: {model_name}")
-                break
-        except Exception as e:
-            print(f"⚠️ Ошибка вызова модели {model_name}: {e}")
-            last_error = e
-
-    # 1. Отправляем текстовый ответ ИИ
-    if response_text:
-        await event.reply(response_text)
-        print("📤 Текстовый ответ успешно отправлен!")
-    else:
-        print(f"❌ Ошибка получения ответа от Groq API: {last_error}")
-        await event.reply("Произошла ошибка при обращении к ИИ.")
-        return
-
-    # 2. Поиск и отправка релевантных PDF-документов и Видеофайлов
-    keywords = [word.lower() for word in user_message.split() if len(word) > 2]
-    
-    for media in media_files:
-        media_name_lower = media["name"].lower()
-        # Проверяем, есть ли хотя бы одно ключевое слово из запроса в названии файла
-        if any(kw in media_name_lower for kw in keywords):
-            if os.path.exists(media["path"]):
-                try:
-                    caption = (
-                        f"📄 Документ стандарта: {media['name']}"
-                        if media["type"] == "pdf"
-                        else f"🎥 Видеоурок: {media['name']}"
-                    )
-                    print(f"📤 Отправка файла пользователю: {media['path']}")
-                    await client.send_file(event.chat_id, media["path"], caption=caption)
-                except Exception as e:
-                    print(f"⚠️ Ошибка отправки файла {media['name']}: {e}")
-
+# ------------------------------------------------------------------------------
+# 4. ТОЧКА ВХОДА И ЗАПУСК
+# ------------------------------------------------------------------------------
 async def main_async():
-    print("🚀 Telegram Userbot (5-station RAG + File Delivery) успешно запущен!")
-    await client.connect()
-    if not await client.is_user_authorized():
-        raise RuntimeError("Ошибка авторизации: SESSION_STRING недействителен или аннулирован!")
+    # client.start() автоматически выполняет подключение и авторизацию по сессии
+    await client.start()
     await client.run_until_disconnected()
 
-def main():
-    asyncio.run(main_async())
-
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main_async())
