@@ -31,20 +31,29 @@ groq_client = Groq(api_key=GROQ_API_KEY.strip())
 # 2. СИСТЕМНЫЙ ПРОМПТ И КАРТА МЕДИАФАЙЛОВ СТАНЦИЙ
 # ------------------------------------------------------------------------------
 SYSTEM_PROMPT = """
-Ты — эксперт по стандартам KFC. Твоя задача — давать точные, вежливые и профессиональные ответы
-по правилам приготовления, технике безопасности, стандартам станций и санитарным нормам KFC.
-Отвечай структурированно, четко и по делу.
-"""
+Ты — эксперт по стандартам KFC. У тебя есть доступ к PDF-инструкциям и регламентам станций:
+1. Панировка (panirovka.pdf)
+2. Жарка / Фрикассе (frikasse.pdf)
+3. Касса (kassa.pdf)
+4. Упаковка (upakovka.pdf)
+5. Санитария (sanitariya.pdf)
 
-BASE_DIR = Path(__file__).parent
-STATIONS_DIR = BASE_DIR / "stations"
+Если пользователь спрашивает про наличие PDF-файлов или стандартов, подтверждай, что материалы по этим 5 станциям есть в системе и будут автоматически отправлены вместе с ответом при запросе конкретной станции. Отвечай вежливо, четко и по делу.
+"""
 
 MEDIA_MAP = {
     "панировка": STATIONS_DIR / "panirovka.pdf",
+    "панировки": STATIONS_DIR / "panirovka.pdf",
     "жарка": STATIONS_DIR / "frikasse.pdf",
+    "жарки": STATIONS_DIR / "frikasse.pdf",
+    "фрикассе": STATIONS_DIR / "frikasse.pdf",
     "касса": STATIONS_DIR / "kassa.pdf",
+    "кассы": STATIONS_DIR / "kassa.pdf",
     "упаковка": STATIONS_DIR / "upakovka.pdf",
+    "упаковки": STATIONS_DIR / "upakovka.pdf",
     "санитария": STATIONS_DIR / "sanitariya.pdf",
+    "санитарии": STATIONS_DIR / "sanitariya.pdf",
+    "чистка": STATIONS_DIR / "sanitariya.pdf",
 }
 
 # Резервный список актуальных моделей с полными путями
