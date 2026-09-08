@@ -6,7 +6,13 @@ from telethon.sessions import StringSession
 from groq import Groq
 
 # ------------------------------------------------------------------------------
-# 1. ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ И ИНИЦИАЛИЗАЦИЯ
+# 1. ОБЪЯВЛЕНИЕ ПУТЕЙ К ФАЙЛАМ (СТРОГО В САМОМ НАЧАЛЕ)
+# ------------------------------------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parent
+STATIONS_DIR = BASE_DIR / "stations"
+
+# ------------------------------------------------------------------------------
+# 2. ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ И ИНИЦИАЛИЗАЦИЯ
 # ------------------------------------------------------------------------------
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
@@ -28,11 +34,8 @@ client = TelegramClient(StringSession(SESSION_STRING.strip()), API_ID, API_HASH)
 groq_client = Groq(api_key=GROQ_API_KEY.strip())
 
 # ------------------------------------------------------------------------------
-# 2. ПУТИ, СИСТЕМНЫЙ ПРОМПТ И КАРТА МЕДИАФАЙЛОВ
+# 3. СИСТЕМНЫЙ ПРОМПТ И КАРТА МЕДИАФАЙЛОВ
 # ------------------------------------------------------------------------------
-BASE_DIR = Path(__file__).parent
-STATIONS_DIR = BASE_DIR / "stations"
-
 SYSTEM_PROMPT = """
 Ты — эксперт по стандартам KFC. У тебя есть доступ к PDF-инструкциям и регламентам станций:
 1. Панировка (panirovka.pdf)
@@ -59,14 +62,13 @@ MEDIA_MAP = {
     "чистка": STATIONS_DIR / "sanitariya.pdf",
 }
 
-# Резервный список моделей на случай недоступности API списка
 FALLBACK_MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant"
 ]
 
 def get_active_groq_models():
-    """Запрашивает актуальный список доступных моделей напрямую из Groq API"""
+    """Динамический запрос активных моделей Groq"""
     try:
         models_data = groq_client.models.list()
         active_models = [m.id for m in models_data.data if getattr(m, 'active', True)]
@@ -79,7 +81,7 @@ def get_active_groq_models():
     return FALLBACK_MODELS
 
 # ------------------------------------------------------------------------------
-# 3. ОБРАБОТКА СООБЩЕНИЙ TELEGRAM
+# 4. ОБРАБОТКА СООБЩЕНИЙ TELEGRAM
 # ------------------------------------------------------------------------------
 @client.on(events.NewMessage(incoming=True))
 async def handle_message(event):
@@ -98,7 +100,6 @@ async def handle_message(event):
     bot_answer = None
     last_error = None
 
-    # Динамически получаем доступные модели
     available_models = get_active_groq_models()
 
     for model_name in available_models:
@@ -132,7 +133,7 @@ async def handle_message(event):
         print(f"❌ Ошибка отправки сообщения в Telegram: {e}")
 
 # ------------------------------------------------------------------------------
-# 4. ЗАПУСК КЛИЕНТА TELETHON
+# 5. ЗАПУСК КЛИЕНТА TELETHON
 # ------------------------------------------------------------------------------
 async def main_async():
     print("🚀 Юзербот успешно запущен и готов к работе...")
